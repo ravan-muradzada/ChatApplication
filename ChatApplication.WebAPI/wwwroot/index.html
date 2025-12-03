@@ -1,0 +1,116 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Private Chat Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+</head>
+<body>
+    <h2>1 to 1 Chat Test</h2>
+
+    <label>Your UserId:</label>
+    <input type="text" id="me">
+
+    <label>Friend's UserId:</label>
+    <input type="text" id="friend">
+
+    <button onclick="createChat()">Create / Load Chat</button>
+
+    <hr>
+
+    <div id="chat-ui" style="display:none">
+        <h3>Chat Messages</h3>
+
+        <div id="messages"
+             style="width:300px;height:200px;border:1px solid black;overflow-y:auto;"></div>
+
+        <input id="msgText" placeholder="Message..." />
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>const baseUrl = "https://localhost:7244"; // Change if needed
+let chatId = null;
+let connection = null;
+let me = null;
+
+async function createChat() {
+    me = document.getElementById("me").value;
+    let friend = document.getElementById("friend").value;
+
+    // 1) Create or Get private chat ID
+    let resp = await fetch(`${baseUrl}/api/Chat/private/${friend}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjZiMjg0MDNjLTY3MzMtNDAwZS05MmRlLTAzZjg5OGM4NWUzYyIsImV4cCI6MTc2NDcwNDU2MCwiaXNzIjoiTXJSYXZhbiIsImF1ZCI6IkFubm91bmNlbWVudHNBcHBBUEkifQ.gfUr3-B8D9lwJ76PK43AVXLPpX_kJR2kdoKc4A_uRRU`
+        }
+    });
+
+    chatId = await resp.json();
+    console.log("ChatId:", chatId);
+
+    document.getElementById("chat-ui").style.display = "block";
+
+    await startSignalR();
+    await joinGroup();
+    await loadMessages();
+}
+
+async function startSignalR() {
+    connection = new signalR.HubConnectionBuilder()
+        .withUrl(`${baseUrl}/chatHub`, {
+            accessTokenFactory: () => "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjZiMjg0MDNjLTY3MzMtNDAwZS05MmRlLTAzZjg5OGM4NWUzYyIsImV4cCI6MTc2NDcwNDU2MCwiaXNzIjoiTXJSYXZhbiIsImF1ZCI6IkFubm91bmNlbWVudHNBcHBBUEkifQ.gfUr3-B8D9lwJ76PK43AVXLPpX_kJR2kdoKc4A_uRRU"
+        })
+        .build();
+
+    connection.on("ReceiveMessage", (msg) => {
+        addMessage(msg.senderId, msg.text);
+    });
+
+    await connection.start();
+    console.log("SignalR Connected");
+}
+
+async function joinGroup() {
+    await connection.invoke("JoinChat", chatId);
+}
+
+async function loadMessages() {
+    let resp = await fetch(`${baseUrl}/api/Chat/${chatId}/messages`, {
+        headers: {
+            "Authorization": `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjZiMjg0MDNjLTY3MzMtNDAwZS05MmRlLTAzZjg5OGM4NWUzYyIsImV4cCI6MTc2NDcwNDU2MCwiaXNzIjoiTXJSYXZhbiIsImF1ZCI6IkFubm91bmNlbWVudHNBcHBBUEkifQ.gfUr3-B8D9lwJ76PK43AVXLPpX_kJR2kdoKc4A_uRRU`
+        }
+    });
+
+    let list = await resp.json();
+
+    document.getElementById("messages").innerHTML = "";
+
+    list.forEach(m => addMessage(m.senderId, m.text));
+}
+
+function addMessage(sender, text) {
+    const div = document.createElement("div");
+    div.textContent = sender + ": " + text;
+    document.getElementById("messages").appendChild(div);
+
+    const box = document.getElementById("messages");
+    box.scrollTop = box.scrollHeight;
+}
+
+async function sendMessage() {
+    let text = document.getElementById("msgText").value;
+
+    await fetch(`${baseUrl}/api/Chat/${chatId}/message`, {
+        method: "POST",
+        body: JSON.stringify({ text: text }),
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6IjZiMjg0MDNjLTY3MzMtNDAwZS05MmRlLTAzZjg5OGM4NWUzYyIsImV4cCI6MTc2NDcwNDU2MCwiaXNzIjoiTXJSYXZhbiIsImF1ZCI6IkFubm91bmNlbWVudHNBcHBBUEkifQ.gfUr3-B8D9lwJ76PK43AVXLPpX_kJR2kdoKc4A_uRRU`
+        }
+    });
+
+    document.getElementById("msgText").value = "";
+}</script>
+
+</body>
+</html>
